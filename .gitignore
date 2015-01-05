@@ -1,0 +1,8 @@
+# Ignore Cruft
+._*
+
+# Ignore downloaded archives
+FETCH_*
+
+# Ignore created Images
+FreeBSD-GCE-*
