@@ -113,7 +113,7 @@ fi
 if [ -n "${SWAPSIZE}" ]; then
 	IMAGEUNITS=$( echo "${IMAGESIZE}" | sed 's/[0-9.]//g' )
 	SWAPUNITS=$( echo "${SWAPSIZE}" | sed 's/[0-9.]//g' )
-	if [ "$IMAGEUNITS" -ne "$SWAPUNITS" ]; then
+	if [ "$IMAGEUNITS" != "$SWAPUNITS" ]; then
 		echo "Image size and swap size units must match, e.g. 10G, 2G.";
 		exit 1
 	fi
