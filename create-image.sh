@@ -13,6 +13,7 @@ usage() {
 		-p Password for new user.  Default: passw0rd.
 		-r Release of FreeBSD to use.  Default: 10.1-RELEASE
 		-s Image size.  Specify units as G or M.  Default: 2G.
+		-w Swap size.  Specify in same units as Image size.  Subtracted from usable image size.  Default none.
 		-u Username for new user.  Default: gceuser.
 		"
 }
@@ -25,6 +26,7 @@ fi
 
 # Defaults
 IMAGESIZE='2G'
+SWAPSIZE=''
 DEVICEID=''
 RELEASE='10.1-RELEASE'
 RELEASEDIR=''
@@ -35,7 +37,7 @@ PUBKEYFILE=''
 PRIKEYFILE=''
 
 # Switches
-while getopts ":hk:K:p:r:s:u:" opt; do
+while getopts ":hk:K:p:r:s:w:u:" opt; do
   case $opt in
     h)
       usage
@@ -55,6 +57,9 @@ while getopts ":hk:K:p:r:s:u:" opt; do
       ;;
     s)
       IMAGESIZE="${OPTARG}"
+      ;;
+    w)
+      SWAPSIZE="${OPTARG}"
       ;;
     u)
       NEWUSER="${OPTARG}"
@@ -104,6 +109,16 @@ if [ -z "${NEWPASS}" ]; then
 	exit 1
 fi
 
+# Size Setup
+if [ -n "${SWAPSIZE}" ]; then
+	IMAGEUNITS=$( echo "${IMAGESIZE}" | sed 's/[0-9.]//g' )
+	SWAPUNITS=$( echo "${SWAPSIZE}" | sed 's/[0-9.]//g' )
+	if [ "$IMAGEUNITS" -ne "$SWAPUNITS" ]; then
+		echo "Image size and swap size units must match, e.g. 10G, 2G.";
+		exit 1
+	fi
+fi
+
 # Create The Image
 echo "Creating image..."
 truncate -s $IMAGESIZE temporary.img
@@ -118,6 +133,9 @@ TMPMNTPNT=$( mktemp -d /tmp/freebsd-img-mnt.XXXXXXXX )
 echo "Adding partitions..."
 gpart create -s gpt /dev/${DEVICEID}
 gpart add -s 222 -t freebsd-boot -l boot0 ${DEVICEID}
+if [ -n "${SWAPSIZE}" ]; then
+	gpart add -t freebsd-swap -s ${SWAPSIZE} -l swap0 ${DEVICEID}
+fi
 gpart add -t freebsd-ufs -l root0 ${DEVICEID}
 gpart bootcode -b /boot/pmbr -p /boot/gptboot -i 1 ${DEVICEID}
 
@@ -189,9 +207,16 @@ chown -R $NEWUSER_UID:$NEWUSER_GID $NEWUSER_HOME/.ssh
 echo "Configuring image for GCE..."
 
 ### /etc/fstab
+if [ -n $SWAPSIZE ]; then
 cat >> $TMPMNTPNT/etc/fstab << __EOF__
-/dev/da0p2	/	ufs	rw,noatime,suiddir	1	1
+/dev/da0p2	none	swap	sw									0	0
+/dev/da0p3	/			ufs		rw,noatime,suiddir	1	1
 __EOF__
+else
+cat >> $TMPMNTPNT/etc/fstab << __EOF__
+/dev/da0p2	/			ufs		rw,noatime,suiddir	1	1
+__EOF__
+fi
 
 ### /boot.config
 echo -Dh > $TMPMNTPNT/boot.config
