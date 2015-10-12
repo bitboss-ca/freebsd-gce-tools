@@ -11,9 +11,9 @@ usage() {
 		-k Path to public key for new user.  Will be added to authorized_keys so you can log in.  Required.
 		-K Path to private key.  Implies install public and private keys for new user.
 		-p Password for new user.  Default: passw0rd.
-		-r Release of FreeBSD to use.  Default: 10.1-RELEASE
+		-r Release of FreeBSD to use.  Default: 10.2-RELEASE
 		-s Image size.  Specify units as G or M.  Default: 2G.
-		-w Swap size.  Specify in same units as Image size.  Subtracted from usable image size.  Default none.
+		-w Swap size.  Specify in same units as Image size.  Added to image size.  Default none.
 		-u Username for new user.  Default: gceuser.
 		"
 }
@@ -28,7 +28,7 @@ fi
 IMAGESIZE='2G'
 SWAPSIZE=''
 DEVICEID=''
-RELEASE='10.1-RELEASE'
+RELEASE='10.2-RELEASE'
 RELEASEDIR=''
 TMPMNTPNT=''
 NEWUSER='gceuser'
@@ -117,11 +117,17 @@ if [ -n "${SWAPSIZE}" ]; then
 		echo "Image size and swap size units must match, e.g. 10G, 2G.";
 		exit 1
 	fi
+	IMAGENUM=$( echo "${IMAGESIZE}" | sed 's/[a-zA-Z]//g' )
+	echo "Image: ${IMAGENUM}"
+	SWAPNUM=$( echo "${SWAPSIZE}" | sed 's/[a-zA-Z]//g' )
+	echo "Swap: ${SWAPNUM}"
+	TOTALSIZE=$(( ${IMAGENUM} + ${SWAPNUM} ))"${IMAGEUNITS}"
+	echo "Size: ${IMAGESIZE} + ${SWAPSIZE} = ${TOTALSIZE}";
 fi
 
 # Create The Image
 echo "Creating image..."
-truncate -s $IMAGESIZE temporary.img
+truncate -s $TOTALSIZE temporary.img
 
 # Get a device ID for the image
 DEVICEID=$( mdconfig -a -t vnode -f temporary.img )
@@ -132,12 +138,15 @@ TMPMNTPNT=$( mktemp -d /tmp/freebsd-img-mnt.XXXXXXXX )
 # Partition the image
 echo "Adding partitions..."
 gpart create -s gpt /dev/${DEVICEID}
+echo -n "Adding boot: "
 gpart add -s 222 -t freebsd-boot -l boot0 ${DEVICEID}
-if [ -n "${SWAPSIZE}" ]; then
-	gpart add -t freebsd-swap -s ${SWAPSIZE} -l swap0 ${DEVICEID}
-fi
-gpart add -t freebsd-ufs -l root0 ${DEVICEID}
+echo -n "Adding root: "
+gpart add -t freebsd-ufs -s ${IMAGESIZE} -l root0 ${DEVICEID}
 gpart bootcode -b /boot/pmbr -p /boot/gptboot -i 1 ${DEVICEID}
+if [ -n "${SWAPSIZE}" ]; then
+	echo -n "Adding swap: "
+	gpart add -t freebsd-swap -l swap0 ${DEVICEID}
+fi
 
 # Create and mount file system
 echo "Creating and mounting filesystem..."
@@ -207,14 +216,12 @@ chown -R $NEWUSER_UID:$NEWUSER_GID $NEWUSER_HOME/.ssh
 echo "Configuring image for GCE..."
 
 ### /etc/fstab
-if [ -n $SWAPSIZE ]; then
-cat >> $TMPMNTPNT/etc/fstab << __EOF__
-/dev/da0p2	none	swap	sw									0	0
-/dev/da0p3	/			ufs		rw,noatime,suiddir	1	1
-__EOF__
-else
 cat >> $TMPMNTPNT/etc/fstab << __EOF__
 /dev/da0p2	/			ufs		rw,noatime,suiddir	1	1
+__EOF__
+if [ -n $SWAPSIZE ]; then
+cat >> $TMPMNTPNT/etc/fstab << __EOF__
+/dev/da0p3	none	swap	sw									0	0
 __EOF__
 fi
 
