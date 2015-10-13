@@ -130,6 +130,8 @@ if [ -n "${SWAPSIZE}" ]; then
 	echo "Swap: ${SWAPNUM}"
 	TOTALSIZE=$(( ${IMAGENUM} + ${SWAPNUM} ))"${IMAGEUNITS}"
 	echo "Size: ${IMAGESIZE} + ${SWAPSIZE} = ${TOTALSIZE}";
+else
+	TOTALSIZE=$IMAGESIZE
 fi
 
 # Create The Image
