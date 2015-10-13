@@ -18,10 +18,10 @@ usage() {
 		"
 }
 
-# Check for root credentials
-if [ `whoami` != "root" ]; then
-	echo "Execute as root only!"
-	exit 1
+# Show usage if no parameters
+if [ -z $1 ]; then
+	usage
+	exit 0
 fi
 
 # Defaults
@@ -76,6 +76,7 @@ while getopts ":hk:K:p:r:s:w:u:" opt; do
 done
 shift $((OPTIND-1))
 
+
 # Infrastructure Checks
 echo " "
 if [ -n "${PRIKEYFILE}" ] && [ -z "${PUBKEYFILE}" ]; then
@@ -106,6 +107,12 @@ fi
 if [ -z "${NEWPASS}" ]; then
 	echo "New password for the image cannot be empty."
 	usage
+	exit 1
+fi
+
+# Check for root credentials
+if [ `whoami` != "root" ]; then
+	echo "Execute as root only!"
 	exit 1
 fi
 
