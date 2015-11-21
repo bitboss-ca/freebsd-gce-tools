@@ -31,6 +31,7 @@ DEVICEID=''
 RELEASE='10.2-RELEASE'
 RELEASEDIR=''
 TMPMNTPNT=''
+TMPMNTPREFIX='freebsd-gce-tools-tmp'
 NEWUSER='gceuser'
 NEWPASS='passw0rd'
 PUBKEYFILE=''
@@ -142,7 +143,7 @@ truncate -s $TOTALSIZE temporary.img
 DEVICEID=$( mdconfig -a -t vnode -f temporary.img )
 
 # Create a temporary mount point
-TMPMNTPNT=$( mktemp -d /tmp/freebsd-img-mnt.XXXXXXXX )
+TMPMNTPNT=$( mktemp -d "/tmp/${TMPMNTPREFIX}.XXXXXXXX" )
 
 # Partition the image
 echo "Adding partitions..."
@@ -223,6 +224,9 @@ chown -R $NEWUSER_UID:$NEWUSER_GID $NEWUSER_HOME/.ssh
 
 # Config File Changes
 echo "Configuring image for GCE..."
+
+### Create a Local etc
+mkdir $TMPMNTPNT/usr/local/etc
 
 ### /etc/fstab
 cat >> $TMPMNTPNT/etc/fstab << __EOF__
