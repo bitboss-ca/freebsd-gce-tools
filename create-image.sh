@@ -241,6 +241,8 @@ echo -Dh > $TMPMNTPNT/boot.config
 cat >> $TMPMNTPNT/boot/loader.conf << __EOF__
 # GCE Console
 console="comconsole"
+# No Boot Delay
+autoboot_delay="0"
 __EOF__
 
 ### /etc/rc.conf
@@ -257,8 +259,9 @@ __EOF__
 /usr/bin/sed -Ei.original 's/^#UseDNS yes/UseDNS no/' $TMPMNTPNT/etc/ssh/sshd_config
 /usr/bin/sed -Ei '' 's/^#UsePAM yes/UsePAM no/' $TMPMNTPNT/etc/ssh/sshd_config
 
-### /etc/ntp.conf
-/usr/bin/sed -Ei.original 's/^server/#server/' $TMPMNTPNT/etc/ntp.conf
+### /etc/ntp.conf > /usr/local/etc/ntp.conf
+cp $TMPMNTPNT/etc/ntp.conf $TMPMNTPNT/usr/local/etc/ntp.conf
+/usr/bin/sed -Ei.original 's/^server/#server/' $TMPMNTPNT/usr/local/etc/ntp.conf
 cat >> $TMPMNTPNT/etc/ntp.conf << __EOF__
 # GCE NTP Server
 server 169.254.169.254 burst iburst
