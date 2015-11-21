@@ -17,8 +17,13 @@ Use the script to create images suitable for writing to GCE disks and booting in
 * Note that you are not required to have the specified image size available as free space on your local hard drive.  The truncate(1) command "does not cause space to be allocated" unless written to.  This script only requires about 1GB to run.
 
 ## Writing Images
+Use any running *nix machine in the GCE to write your image to a new GCE disk.  If this is your first image, spin up an instance of debian, copy your new image to it, attach a new disk as big as your image target size, and write your image to the new disk.  Detach the new disk, and then you can create a new instance using your new disk.
+
 **NOTE: The example commands below will _destroy data_ unless you are careful to specify the correct target device!
 Simply write the image directly to a blank GCE disk, like so:
-gzcat [Image File] > [GCE Blank Disk]
+    
+    gunzip [Image File] > [GCE Blank Disk]
 
-DEBIAN or FreeBSD: sudo sh -c 'gunzip -c [TheImageFile.gz] > [Your device, e.g. /dev/sdb]'
+Example for Debian or FreeBSD:
+
+    sudo sh -c 'gunzip -c [TheImageFile.gz] > [Your device, e.g. /dev/sdb]'
