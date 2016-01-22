@@ -134,11 +134,11 @@ if [ -n "${SWAPSIZE}" ]; then
 		exit 1
 	fi
 	IMAGENUM=$( echo "${IMAGESIZE}" | sed 's/[a-zA-Z]//g' )
-	echo "Image: ${IMAGENUM}"
+	#echo "Image: ${IMAGENUM}"
 	SWAPNUM=$( echo "${SWAPSIZE}" | sed 's/[a-zA-Z]//g' )
-	echo "Swap: ${SWAPNUM}"
+	#echo "Swap: ${SWAPNUM}"
 	TOTALSIZE=$(( ${IMAGENUM} + ${SWAPNUM} ))"${IMAGEUNITS}"
-	echo "Size: ${IMAGESIZE} + ${SWAPSIZE} = ${TOTALSIZE}";
+	echo "Image: ${IMAGESIZE}${IMAGEUNITS} + Swap: ${SWAPSIZE}${IMAGEUNITS} = ${TOTALSIZE}${IMAGEUNITS}";
 else
 	TOTALSIZE=$IMAGESIZE
 fi
