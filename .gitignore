@@ -4,5 +4,8 @@
 # Ignore downloaded archives
 FETCH_*
 
+# Ignore temporary image files
+temporary.img
+
 # Ignore created Images
 FreeBSD-GCE-*
