@@ -15,6 +15,7 @@ usage() {
 		-s Image size.  Specify units as G or M.  Default: 2G.
 		-w Swap size.  Specify in same units as Image size.  Added to image size.  Default none.
 		-u Username for new user.  Default: gceuser.
+		-z Use ZFS filesystem.
 		"
 }
 
@@ -31,14 +32,17 @@ DEVICEID=''
 RELEASE='10.2-RELEASE'
 RELEASEDIR=''
 TMPMNTPNT=''
+TMPCACHE=''
 TMPMNTPREFIX='freebsd-gce-tools-tmp'
 NEWUSER='gceuser'
 NEWPASS='passw0rd'
 PUBKEYFILE=''
 PRIKEYFILE=''
+USEZFS=''
+FILETYPE='UFS'
 
 # Switches
-while getopts ":hk:K:p:r:s:w:u:" opt; do
+while getopts ":hk:K:p:r:s:w:u:z" opt; do
   case $opt in
     h)
       usage
@@ -64,6 +68,10 @@ while getopts ":hk:K:p:r:s:w:u:" opt; do
       ;;
     u)
       NEWUSER="${OPTARG}"
+      ;;
+    z)
+      USEZFS='YES'
+      FILETYPE='ZFS'
       ;;
     \?)
       echo "Invalid option: -${OPTARG}" >&2
@@ -145,23 +153,68 @@ DEVICEID=$( mdconfig -a -t vnode -f temporary.img )
 # Create a temporary mount point
 TMPMNTPNT=$( mktemp -d "/tmp/${TMPMNTPREFIX}.XXXXXXXX" )
 
-# Partition the image
-echo "Adding partitions..."
-gpart create -s gpt /dev/${DEVICEID}
-echo -n "Adding boot: "
-gpart add -s 222 -t freebsd-boot -l boot0 ${DEVICEID}
-echo -n "Adding root: "
-gpart add -t freebsd-ufs -s ${IMAGESIZE} -l root0 ${DEVICEID}
-gpart bootcode -b /boot/pmbr -p /boot/gptboot -i 1 ${DEVICEID}
-if [ -n "${SWAPSIZE}" ]; then
-	echo -n "Adding swap: "
-	gpart add -t freebsd-swap -l swap0 ${DEVICEID}
-fi
+if [ $USEZFS ]; then
 
-# Create and mount file system
-echo "Creating and mounting filesystem..."
-newfs -U /dev/${DEVICEID}p2
-mount /dev/${DEVICEID}p2 ${TMPMNTPNT}
+	TMPCACHE=$( mktemp -d "/tmp/${TMPMNTPREFIX}.XXXXXXXX" )
+
+
+	echo "Creating ZFS boot root partitions..."
+	gpart create -s gpt ${DEVICEID}
+	gpart add -a 4k -s 512k -t freebsd-boot ${DEVICEID}
+	gpart add -a 4k -t freebsd-zfs -l root0 ${DEVICEID}
+	gpart bootcode -b /boot/pmbr -p /boot/gptzfsboot -i 1 ${DEVICEID}
+
+	echo "Creating zroot pool..."
+	#gnop create -S 4096 /dev/${DEVICEID}
+	#zpool create -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot /dev/${DEVICEID}.nop
+	zpool create -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot /dev/${DEVICEID}
+	zpool export zroot
+	#gnop destroy /dev/${DEVICEID}.nop
+	zpool import -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot
+	mount | grep zroot
+
+
+	echo "Setting ZFS properties..."
+	zpool set bootfs=zroot zroot
+	# zpool set listsnapshots=on zroot
+	# zpool set autoreplace=on zroot
+	# #zpool set autoexpand=on zroot
+	# zfs set checksum=fletcher4 zroot
+	# zfs set compression=lz4 zroot
+	# zfs set atime=off zroot
+	# zfs set copies=2 zroot
+	# #zfs set mountpoint=/ zroot
+
+	if [ -n "${SWAPSIZE}" ]; then
+		echo "# Adding swap space..."
+		zfs create -V ${SWAPSIZE} zroot/swap
+		zfs set org.freebsd:swap=on zroot/swap
+	fi
+
+	# Add the extra component to the path for root
+	TMPMNTPNT="${TMPMNTPNT}/zroot"
+
+else
+
+	# Partition the image
+	echo "Adding partitions..."
+	gpart create -s gpt /dev/${DEVICEID}
+	echo -n "Adding boot: "
+	gpart add -s 222 -t freebsd-boot -l boot0 ${DEVICEID}
+	echo -n "Adding root: "
+	gpart add -t freebsd-ufs -s ${IMAGESIZE} -l root0 ${DEVICEID}
+	gpart bootcode -b /boot/pmbr -p /boot/gptboot -i 1 ${DEVICEID}
+	if [ -n "${SWAPSIZE}" ]; then
+		echo -n "Adding swap: "
+		gpart add -t freebsd-swap -l swap0 ${DEVICEID}
+	fi
+
+	# Create and mount file system
+	echo "Creating and mounting filesystem..."
+	newfs -U /dev/${DEVICEID}p2
+	mount /dev/${DEVICEID}p2 ${TMPMNTPNT}
+
+fi
 
 # Fetch FreeBSD into the image
 RELEASEDIR="FETCH_${RELEASE}"
@@ -197,6 +250,58 @@ fi
 echo "Extracting lib32..."
 tar -C ${TMPMNTPNT} -xpf ${RELEASEDIR}/lib32.txz < /dev/tty
 
+
+
+
+if [ $USEZFS ]; then
+	echo "Configuring for ZFS..."
+	cp ${TMPCACHE}/zpool.cache ${TMPMNTPNT}/boot/zfs/zpool.cache
+
+	# echo ""
+	# echo "# Setup ZFS root mount and boot"
+	# echo 'zfs_enable="YES"' >> ${TMPMNTPNT}/etc/rc.conf
+	# echo 'zfs_load="YES"' >> ${TMPMNTPNT}/loader.conf
+	# echo 'vfs.root.mountfrom="zfs:zroot"' >> ${TMPMNTPNT}/boot/loader.conf
+
+cat >> $TMPMNTPNT/etc/rc.conf << __EOF__
+# ZFS On Root
+zfs_enable="YES"
+__EOF__
+
+# Setup ZFS root mount and boot
+cat >> $TMPMNTPNT/loader.conf << __EOF__
+# ZFS On Root
+zfs_load="YES"
+__EOF__
+
+# Setup ZFS root mount and boot
+cat >> $TMPMNTPNT/boot/loader.conf << __EOF__
+# ZFS On Root
+vfs.root.mountfrom="zfs:zroot"
+__EOF__
+
+	# echo ""
+	# echo "# use gpt ids instead of gptids or disks idents"
+	# echo 'kern.geom.label.disk_ident.enable="0"' >> ${TMPMNTPNT}/boot/loader.conf
+
+cat >> $TMPMNTPNTboot/loader.conf << __EOF__
+# ZFS On Root: use gpt ids instead of gptids or disks idents
+kern.geom.label.disk_ident.enable="0"
+__EOF__
+
+	# echo 'kern.geom.label.gpt.enable="1"' >> ${TMPMNTPNT}/boot/loader.conf
+	# echo 'kern.geom.label.gptid.enable="0"' >> ${TMPMNTPNT}/boot/loader.conf
+
+cat >> $TMPMNTPNTboot/boot/loader.conf << __EOF__
+# ZFS on Root: use gpt ids instead of gptids or disks idents
+kern.geom.label.gpt.enable="1"
+kern.geom.label.gptid.enable="0"
+__EOF__
+
+
+fi
+
+
 # Configure the new image for new user
 echo "Creating ${NEWUSER} and home dir..."
 echo $NEWPASS | pw -V $TMPMNTPNT/etc useradd -h 0 -n $NEWUSER -c $NEWUSER -s /bin/csh -m
@@ -229,6 +334,10 @@ echo "Configuring image for GCE..."
 mkdir $TMPMNTPNT/usr/local/etc
 
 ### /etc/fstab
+if [ $USEZFS ]; then
+	# touch the /etc/fstab else freebsd will not boot properly"
+	touch $TMPMNTPNT/etc/fstab
+else
 cat >> $TMPMNTPNT/etc/fstab << __EOF__
 /dev/da0p2	/			ufs		rw,noatime,suiddir	1	1
 __EOF__
@@ -236,6 +345,7 @@ if [ -n $SWAPSIZE ]; then
 cat >> $TMPMNTPNT/etc/fstab << __EOF__
 /dev/da0p3	none	swap	sw									0	0
 __EOF__
+	fi
 fi
 
 ### /boot.config
@@ -290,13 +400,18 @@ chroot $TMPMNTPNT /bin/sh -c 'ln -s /usr/share/zoneinfo/America/Vancouver /etc/l
 
 # Finish up
 echo "Detaching image..."
-umount $TMPMNTPNT
+if [ $USEZFS ]; then
+	zfs unmount zroot
+	zpool export zroot
+else
+	umount $TMPMNTPNT
+fi
 mdconfig -d -u ${DEVICEID}
 
 # Name the image
 echo "Compressing image..."
-mv temporary.img FreeBSD-GCE-$RELEASE.img
-gzip FreeBSD-GCE-$RELEASE.img
-shasum FreeBSD-GCE-$RELEASE.img.gz > FreeBSD-GCE-$RELEASE.img.gz.sha
+mv temporary.img FreeBSD-GCE-${RELEASE}-${FILETYPE}.img
+gzip FreeBSD-GCE-${RELEASE}-${FILETYPE}.img
+shasum FreeBSD-GCE-${RELEASE}-${FILETYPE}.img.gz > FreeBSD-GCE-${RELEASE}-${FILETYPE}.img.gz.sha
 
 echo "Done."
