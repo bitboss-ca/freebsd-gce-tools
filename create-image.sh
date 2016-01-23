@@ -283,21 +283,15 @@ __EOF__
 	# echo ""
 	# echo "# use gpt ids instead of gptids or disks idents"
 	# echo 'kern.geom.label.disk_ident.enable="0"' >> ${TMPMNTPNT}/boot/loader.conf
-
-cat >> $TMPMNTPNTboot/loader.conf << __EOF__
-# ZFS On Root: use gpt ids instead of gptids or disks idents
-kern.geom.label.disk_ident.enable="0"
-__EOF__
-
 	# echo 'kern.geom.label.gpt.enable="1"' >> ${TMPMNTPNT}/boot/loader.conf
 	# echo 'kern.geom.label.gptid.enable="0"' >> ${TMPMNTPNT}/boot/loader.conf
 
-cat >> $TMPMNTPNTboot/boot/loader.conf << __EOF__
-# ZFS on Root: use gpt ids instead of gptids or disks idents
+cat >> $TMPMNTPNT/boot/loader.conf << __EOF__
+# ZFS On Root: use gpt ids instead of gptids or disks idents
+kern.geom.label.disk_ident.enable="0"
 kern.geom.label.gpt.enable="1"
 kern.geom.label.gptid.enable="0"
 __EOF__
-
 
 fi
 
@@ -360,7 +354,7 @@ autoboot_delay="0"
 __EOF__
 
 ### /etc/rc.conf
-cat > $TMPMNTPNT/etc/rc.conf << __EOF__
+cat >> $TMPMNTPNT/etc/rc.conf << __EOF__
 console="comconsole"
 hostname="freebsd"
 ifconfig_vtnet0="DHCP"
