@@ -15,7 +15,7 @@ usage() {
 		-s Image size.  Specify units as G or M.  Default: 2G.
 		-w Swap size.  Specify in same units as Image size.  Added to image size.  Default none.
 		-u Username for new user.  Default: gceuser.
-		-z Use ZFS filesystem.
+		-z Use ZFS filesystem for root.
 		"
 }
 
@@ -26,6 +26,8 @@ if [ -z $1 ]; then
 fi
 
 # Defaults
+VERBOSE=''
+COMPRESS=''
 IMAGESIZE='2G'
 SWAPSIZE=''
 DEVICEID=''
@@ -42,8 +44,11 @@ USEZFS=''
 FILETYPE='UFS'
 
 # Switches
-while getopts ":hk:K:p:r:s:w:u:z" opt; do
+while getopts ":chk:K:p:r:s:w:u:vz" opt; do
   case $opt in
+  	c)
+			COMPRESS='YES'
+			;;
     h)
       usage
       exit 0
@@ -69,6 +74,10 @@ while getopts ":hk:K:p:r:s:w:u:z" opt; do
     u)
       NEWUSER="${OPTARG}"
       ;;
+    v)
+			VERBOSE="YES"
+			echo "Verbose output enabled."
+			;;
     z)
       USEZFS='YES'
       FILETYPE='ZFS'
@@ -84,7 +93,6 @@ while getopts ":hk:K:p:r:s:w:u:z" opt; do
   esac
 done
 shift $((OPTIND-1))
-
 
 # Infrastructure Checks
 echo " "
@@ -125,6 +133,8 @@ if [ `whoami` != "root" ]; then
 	exit 1
 fi
 
+[ ${VERBOSE} ] && echo "Started at `date date '+%Y-%m-%d %r'`"
+
 # Size Setup
 if [ -n "${SWAPSIZE}" ]; then
 	IMAGEUNITS=$( echo "${IMAGESIZE}" | sed 's/[0-9.]//g' )
@@ -156,44 +166,46 @@ TMPMNTPNT=$( mktemp -d "/tmp/${TMPMNTPREFIX}.XXXXXXXX" )
 if [ $USEZFS ]; then
 
 	TMPCACHE=$( mktemp -d "/tmp/${TMPMNTPREFIX}.XXXXXXXX" )
+	ZLABELID=$( hexdump -n 4 -v -e '/1 "%02X"' /dev/urandom )
+	ZLABEL="zroot-${ZLABELID}-0"
+	ZNAME="zroot-${ZLABELID}"
 
+	[ ${VERBOSE} ] && echo "ZLABEL: ${ZLABEL}"
+	[ ${VERBOSE} ] && echo "ZNAME: ${ZNAME}"
 
 	echo "Creating ZFS boot root partitions..."
 	gpart create -s gpt ${DEVICEID}
 	gpart add -a 4k -s 512k -t freebsd-boot ${DEVICEID}
-	gpart add -a 4k -t freebsd-zfs -l root0 ${DEVICEID}
+	gpart add -a 4k -t freebsd-zfs -l ${ZLABEL} ${DEVICEID}
 	gpart bootcode -b /boot/pmbr -p /boot/gptzfsboot -i 1 ${DEVICEID}
 
 	echo "Creating zroot pool..."
-	#gnop create -S 4096 /dev/gpt/root0
-	#zpool create -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot /dev/gpt/root0.nop
-	#zpool create -f -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot /dev/gpt/root0.nop
-	zpool create -f -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot /dev/gpt/root0
-	zpool export zroot
-	#gnop destroy /dev/gpt/root0.nop
-	zpool import -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot
-	mount | grep zroot
-
+	gnop create -S 4096 /dev/gpt/${ZLABEL}
+	zpool create -f -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache ${ZNAME} /dev/gpt/${ZLABEL}.nop
+	zpool export ${ZNAME}
+	gnop destroy /dev/gpt/${ZLABEL}.nop
+	zpool import -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache ${ZNAME}
+	mount | grep ${ZNAME}
 
 	echo "Setting ZFS properties..."
-	zpool set bootfs=zroot zroot
-	# zpool set listsnapshots=on zroot
-	# zpool set autoreplace=on zroot
-	# #zpool set autoexpand=on zroot
-	# zfs set checksum=fletcher4 zroot
-	# zfs set compression=lz4 zroot
-	# zfs set atime=off zroot
-	# zfs set copies=2 zroot
-	# #zfs set mountpoint=/ zroot
+	zpool set bootfs=${ZNAME} ${ZNAME}
+	# zpool set listsnapshots=on ${ZNAME}
+	# zpool set autoreplace=on ${ZNAME}
+	# #zpool set autoexpand=on ${ZNAME}
+	# zfs set checksum=fletcher4 ${ZNAME}
+	# zfs set compression=lz4 ${ZNAME}
+	# zfs set atime=off ${ZNAME}
+	# zfs set copies=2 ${ZNAME}
+	# #zfs set mountpoint=/ ${ZNAME}
 
 	if [ -n "${SWAPSIZE}" ]; then
 		echo "Adding swap space..."
-		zfs create -V ${SWAPSIZE} zroot/swap
-		zfs set org.freebsd:swap=on zroot/swap
+		zfs create -V ${SWAPSIZE} ${ZNAME}/swap
+		zfs set org.freebsd:swap=on ${ZNAME}/swap
 	fi
 
 	# Add the extra component to the path for root
-	TMPMNTPNT="${TMPMNTPNT}/zroot"
+	TMPMNTPNT="${TMPMNTPNT}/${ZNAME}"
 
 else
 
@@ -251,45 +263,28 @@ fi
 echo "Extracting lib32..."
 tar -C ${TMPMNTPNT} -xpf ${RELEASEDIR}/lib32.txz < /dev/tty
 
+# ZFS on Root Configuration
 if [ $USEZFS ]; then
 	echo "Configuring for ZFS..."
 	cp ${TMPCACHE}/zpool.cache ${TMPMNTPNT}/boot/zfs/zpool.cache
-
-	# echo ""
-	# echo "# Setup ZFS root mount and boot"
-	# echo 'zfs_enable="YES"' >> ${TMPMNTPNT}/etc/rc.conf
-	# echo 'zfs_load="YES"' >> ${TMPMNTPNT}/loader.conf
-	# echo 'vfs.root.mountfrom="zfs:zroot"' >> ${TMPMNTPNT}/boot/loader.conf
-
+## /etc/rc.conf 
 cat >> $TMPMNTPNT/etc/rc.conf << __EOF__
 # ZFS On Root
 zfs_enable="YES"
 __EOF__
-
-# Setup ZFS root mount and boot
+## /boot/loader.conf
 cat >> $TMPMNTPNT/boot/loader.conf << __EOF__
 # ZFS On Root
-vfs.root.mountfrom="zfs:zroot"
+vfs.root.mountfrom="zfs:${ZNAME}"
 zfs_load="YES"
-__EOF__
-
-	# echo ""
-	# echo "# use gpt ids instead of gptids or disks idents"
-	# echo 'kern.geom.label.disk_ident.enable="0"' >> ${TMPMNTPNT}/boot/loader.conf
-	# echo 'kern.geom.label.gpt.enable="1"' >> ${TMPMNTPNT}/boot/loader.conf
-	# echo 'kern.geom.label.gptid.enable="0"' >> ${TMPMNTPNT}/boot/loader.conf
-
-cat >> $TMPMNTPNT/boot/loader.conf << __EOF__
 # ZFS On Root: use gpt ids instead of gptids or disks idents
 kern.geom.label.disk_ident.enable="0"
 kern.geom.label.gpt.enable="1"
 kern.geom.label.gptid.enable="0"
 __EOF__
-
 fi
 
-
-# Configure the new image for new user
+# Configure new user
 echo "Creating ${NEWUSER} and home dir..."
 echo $NEWPASS | pw -V $TMPMNTPNT/etc useradd -h 0 -n $NEWUSER -c $NEWUSER -s /bin/csh -m
 pw -V $TMPMNTPNT/etc groupmod wheel -m $NEWUSER
@@ -299,7 +294,7 @@ NEWUSER_HOME=$TMPMNTPNT/home/$NEWUSER
 mkdir -p $NEWUSER_HOME
 chown $NEWUSER_UID:$NEWUSER_GID $NEWUSER_HOME
 
-# Set SSH authorized keys && optionally install key pair
+## Set SSH authorized keys && optionally install key pair
 echo "Setting authorized ssh key for ${NEWUSER}..."
 mkdir $NEWUSER_HOME/.ssh
 chmod -R 700 $NEWUSER_HOME/.ssh
@@ -317,10 +312,10 @@ chown -R $NEWUSER_UID:$NEWUSER_GID $NEWUSER_HOME/.ssh
 # Config File Changes
 echo "Configuring image for GCE..."
 
-### Create a Local etc
+## Create a Local etc
 mkdir $TMPMNTPNT/usr/local/etc
 
-### /etc/fstab
+## /etc/fstab
 if [ $USEZFS ]; then
 	# touch the /etc/fstab else freebsd will not boot properly"
 	touch $TMPMNTPNT/etc/fstab
@@ -335,7 +330,7 @@ __EOF__
 	fi
 fi
 
-### /boot.config
+## /boot.config
 echo -Dh > $TMPMNTPNT/boot.config
 
 ### /boot/loader.conf
@@ -346,7 +341,7 @@ console="comconsole"
 autoboot_delay="0"
 __EOF__
 
-### /etc/rc.conf
+## /etc/rc.conf
 cat >> $TMPMNTPNT/etc/rc.conf << __EOF__
 console="comconsole"
 hostname="freebsd"
@@ -356,11 +351,11 @@ ntpd_sync_on_start="YES"
 sshd_enable="YES"
 __EOF__
 
-### /etc/ssh/sshd_config
+## /etc/ssh/sshd_config
 /usr/bin/sed -Ei.original 's/^#UseDNS yes/UseDNS no/' $TMPMNTPNT/etc/ssh/sshd_config
 /usr/bin/sed -Ei '' 's/^#UsePAM yes/UsePAM no/' $TMPMNTPNT/etc/ssh/sshd_config
 
-### /etc/ntp.conf > /usr/local/etc/ntp.conf
+## /etc/ntp.conf > /usr/local/etc/ntp.conf
 cp $TMPMNTPNT/etc/ntp.conf $TMPMNTPNT/usr/local/etc/ntp.conf
 /usr/bin/sed -Ei.original 's/^server/#server/' $TMPMNTPNT/usr/local/etc/ntp.conf
 cat >> $TMPMNTPNT/etc/ntp.conf << __EOF__
@@ -368,7 +363,7 @@ cat >> $TMPMNTPNT/etc/ntp.conf << __EOF__
 server 169.254.169.254 burst iburst
 __EOF__
 
-### /etc/dhclient.conf
+## /etc/dhclient.conf
 cat >> $TMPMNTPNT/etc/dhclient.conf << __EOF__
 # GCE DHCP Client
 interface "vtnet0" {
@@ -376,29 +371,35 @@ interface "vtnet0" {
 }
 __EOF__
 
-### /etc/rc.local
+## /etc/rc.local
 cat > $TMPMNTPNT/etc/rc.local << __EOF__
 # GCE MTU
 ifconfig vtnet0 mtu 1460
 __EOF__
 
-### Time Zone
+## Time Zone
 chroot $TMPMNTPNT /bin/sh -c 'ln -s /usr/share/zoneinfo/America/Vancouver /etc/localtime'
 
-# Finish up
+# Clean up image infrastructure
 echo "Detaching image..."
 if [ $USEZFS ]; then
-	zfs unmount zroot
-	zpool export zroot
+	zfs unmount ${ZNAME}
+	zpool export ${ZNAME}
 else
 	umount $TMPMNTPNT
 fi
 mdconfig -d -u ${DEVICEID}
 
-# Name the image
+# Name/Compress the image
 echo "Compressing image..."
 mv temporary.img FreeBSD-GCE-${RELEASE}-${FILETYPE}.img
-gzip FreeBSD-GCE-${RELEASE}-${FILETYPE}.img
-shasum FreeBSD-GCE-${RELEASE}-${FILETYPE}.img.gz > FreeBSD-GCE-${RELEASE}-${FILETYPE}.img.gz.sha
+if [ ${COMPRESS} ]; then
+	gzip FreeBSD-GCE-${RELEASE}-${FILETYPE}.img
+	shasum FreeBSD-GCE-${RELEASE}-${FILETYPE}.img.gz > FreeBSD-GCE-${RELEASE}-${FILETYPE}.img.gz.sha
+else
+	shasum FreeBSD-GCE-${RELEASE}-${FILETYPE}.img > FreeBSD-GCE-${RELEASE}-${FILETYPE}.img.sha
+fi
+
+[ ${VERBOSE} ] && echo "Started at `date date '+%Y-%m-%d %r'`"
 
 echo "Done."

@@ -2,8 +2,7 @@ TODO
 ====
 
 ## Important
-* Current ZFs implementation could mess with existing zfs pools if they have the same name.  This should be remedied by enumerating existing pools on the local machine running the script before generating a name that will not collide with them.
-* Also make labels that will not collide - zroot0 could destroy data
+* Allow for more ZFS options (in a config file)
 
 ## Nice
 * Allow for package installation
