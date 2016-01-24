@@ -4,6 +4,7 @@ FreeBSD Google Compute Engine Tools
 This script will create a FreeBSD image suitable for booting in the Google Compute Engine (GCE).
 
 Thanks to vascokk for the original Gist posted here: https://gist.github.com/vascokk/b17f8c59446399db5c97
+Thanks to calomel.org for the zfs example posted here: https://calomel.org/zfs_freebsd_root_install.html
 
 ## Creating Images
 Use the script to create images suitable for writing to GCE disks and booting into FreeBSD.  Run it with the -h switch for usage information.

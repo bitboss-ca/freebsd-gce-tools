@@ -138,7 +138,7 @@ if [ -n "${SWAPSIZE}" ]; then
 	SWAPNUM=$( echo "${SWAPSIZE}" | sed 's/[a-zA-Z]//g' )
 	#echo "Swap: ${SWAPNUM}"
 	TOTALSIZE=$(( ${IMAGENUM} + ${SWAPNUM} ))"${IMAGEUNITS}"
-	echo "Image: ${IMAGESIZE}${IMAGEUNITS} + Swap: ${SWAPSIZE}${IMAGEUNITS} = ${TOTALSIZE}${IMAGEUNITS}";
+	echo "${IMAGESIZE} Image + ${SWAPSIZE} Swap = ${TOTALSIZE}";
 else
 	TOTALSIZE=$IMAGESIZE
 fi
@@ -165,11 +165,12 @@ if [ $USEZFS ]; then
 	gpart bootcode -b /boot/pmbr -p /boot/gptzfsboot -i 1 ${DEVICEID}
 
 	echo "Creating zroot pool..."
-	#gnop create -S 4096 /dev/${DEVICEID}
-	#zpool create -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot /dev/${DEVICEID}.nop
-	zpool create -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot /dev/${DEVICEID}
+	#gnop create -S 4096 /dev/gpt/root0
+	#zpool create -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot /dev/gpt/root0.nop
+	#zpool create -f -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot /dev/gpt/root0.nop
+	zpool create -f -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot /dev/gpt/root0
 	zpool export zroot
-	#gnop destroy /dev/${DEVICEID}.nop
+	#gnop destroy /dev/gpt/root0.nop
 	zpool import -o altroot=${TMPMNTPNT} -o cachefile=${TMPCACHE}/zpool.cache zroot
 	mount | grep zroot
 
@@ -186,7 +187,7 @@ if [ $USEZFS ]; then
 	# #zfs set mountpoint=/ zroot
 
 	if [ -n "${SWAPSIZE}" ]; then
-		echo "# Adding swap space..."
+		echo "Adding swap space..."
 		zfs create -V ${SWAPSIZE} zroot/swap
 		zfs set org.freebsd:swap=on zroot/swap
 	fi
@@ -250,9 +251,6 @@ fi
 echo "Extracting lib32..."
 tar -C ${TMPMNTPNT} -xpf ${RELEASEDIR}/lib32.txz < /dev/tty
 
-
-
-
 if [ $USEZFS ]; then
 	echo "Configuring for ZFS..."
 	cp ${TMPCACHE}/zpool.cache ${TMPMNTPNT}/boot/zfs/zpool.cache
@@ -269,15 +267,10 @@ zfs_enable="YES"
 __EOF__
 
 # Setup ZFS root mount and boot
-cat >> $TMPMNTPNT/loader.conf << __EOF__
-# ZFS On Root
-zfs_load="YES"
-__EOF__
-
-# Setup ZFS root mount and boot
 cat >> $TMPMNTPNT/boot/loader.conf << __EOF__
 # ZFS On Root
 vfs.root.mountfrom="zfs:zroot"
+zfs_load="YES"
 __EOF__
 
 	# echo ""
