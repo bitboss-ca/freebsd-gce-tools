@@ -3,11 +3,24 @@ FreeBSD Google Compute Engine Tools
 
 This script will create a FreeBSD image suitable for booting in the Google Compute Engine (GCE).
 
-Thanks to vascokk for the original Gist posted here: https://gist.github.com/vascokk/b17f8c59446399db5c97
-Thanks to calomel.org for the zfs example posted here: https://calomel.org/zfs_freebsd_root_install.html
+## Now With ZFS!
+Use the -z option to create a bootable Google Compue Engine image with root on ZFS!
 
 ## Creating Images
-Use the `create-image.sh` script to create images suitable for writing to GCE disks and booting into FreeBSD.  Run it with the -h switch for usage information.
+Use the `create-image.sh` script to create images suitable for writing to GCE disks and booting into FreeBSD.  Run it with the -h switch for usage information.  Use `cleanup.sh` to clean up infrastructure created during the image creation process, which should only be needed if the script fails for some reason while the image is attached as a device and/or is mounted.
+
+## Usage
+
+    Usage: # ./create-image.sh [options]
+      -h This help
+      -k Path to public key for new user.  Will be added to authorized_keys so you can log in.  Required.
+      -K Path to private key.  Implies install public and private keys for new user.
+      -p Password for new user.  Default: passw0rd.
+      -r Release of FreeBSD to use.  Default: 10.2-RELEASE
+      -s Image size.  Specify units as G or M.  Default: 2G.
+      -w Swap size.  Specify in same units as Image size.  Added to image size.  Default none.
+      -u Username for new user.  Default: gceuser.
+      -z Use ZFS filesystem for root.
 
 ### Keys
 * If you provide only a public key, it will be added to .ssh/authorized_keys for the new user so that you can log in via ssh.
@@ -29,3 +42,7 @@ Simply write the image directly to a blank GCE disk, like so:
 Example for Debian or FreeBSD:
 
     sudo sh -c 'gunzip -c [TheImageFile.gz] > [Your device, e.g. /dev/daX]'
+
+## Thanks
+* Thanks to vascokk for the original Gist posted here: https://gist.github.com/vascokk/b17f8c59446399db5c97.
+* Thanks to calomel.org for the zfs example posted here: https://calomel.org/zfs_freebsd_root_install.html.
