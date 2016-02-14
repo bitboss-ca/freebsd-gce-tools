@@ -7,7 +7,10 @@ set -e
 usage() {
 	echo "
 	Usage: # ${0} [options]
+	
 		-h This help
+
+		-c Compress the image.
 		-k Path to public key for new user.  Will be added to authorized_keys so you can log in.  Required.
 		-K Path to private key.  Implies install public and private keys for new user.
 		-p Password for new user.  Default: passw0rd.
@@ -391,9 +394,9 @@ fi
 mdconfig -d -u ${DEVICEID}
 
 # Name/Compress the image
-echo "Compressing image..."
 mv temporary.img FreeBSD-GCE-${RELEASE}-${FILETYPE}.img
 if [ ${COMPRESS} ]; then
+	echo "Compressing image..."
 	gzip FreeBSD-GCE-${RELEASE}-${FILETYPE}.img
 	shasum FreeBSD-GCE-${RELEASE}-${FILETYPE}.img.gz > FreeBSD-GCE-${RELEASE}-${FILETYPE}.img.gz.sha
 else

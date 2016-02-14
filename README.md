@@ -12,7 +12,10 @@ Use the `create-image.sh` script to create images suitable for writing to GCE di
 ## Usage
 
     Usage: # ./create-image.sh [options]
+    
       -h This help
+
+      -c Compress the image.
       -k Path to public key for new user.  Will be added to authorized_keys so you can log in.  Required.
       -K Path to private key.  Implies install public and private keys for new user.
       -p Password for new user.  Default: passw0rd.
