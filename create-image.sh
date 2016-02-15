@@ -14,6 +14,7 @@ usage() {
 		-k Path to public key for new user.  Will be added to authorized_keys so you can log in.  Required.
 		-K Path to private key.  Implies install public and private keys for new user.
 		-p Password for new user.  Default: passw0rd.
+		-P Packages to install, in a space-separated string (you will need to use quotes).
 		-r Release of FreeBSD to use.  Default: 10.2-RELEASE
 		-s Image size.  Specify units as G or M.  Default: 2G.
 		-w Swap size.  Specify in same units as Image size.  Added to image size.  Default none.
@@ -45,9 +46,10 @@ PUBKEYFILE=''
 PRIKEYFILE=''
 USEZFS=''
 FILETYPE='UFS'
+PACKAGES=''
 
 # Switches
-while getopts ":chk:K:p:r:s:w:u:vz" opt; do
+while getopts ":chk:K:p:P:r:s:w:u:vz" opt; do
   case $opt in
   	c)
 			COMPRESS='YES'
@@ -64,6 +66,9 @@ while getopts ":chk:K:p:r:s:w:u:vz" opt; do
 			;;
     p)
       NEWPASS="${OPTARG}"
+      ;;
+    P)
+      PACKAGES="${OPTARG}"
       ;;
     r)
       RELEASE="${OPTARG}"
@@ -382,6 +387,14 @@ __EOF__
 
 ## Time Zone
 chroot $TMPMNTPNT /bin/sh -c 'ln -s /usr/share/zoneinfo/America/Vancouver /etc/localtime'
+
+## Install packages
+if [ -n "$PACKAGES" ]; then
+	echo "Installing packages..."
+	chroot $TMPMNTPNT /bin/sh -c 'echo "nameserver 8.8.8.8" > /etc/resolv.conf'
+	pkg -c $TMPMNTPNT install -y ${PACKAGES}
+	chroot $TMPMNTPNT /bin/sh -c 'rm /etc/resolv.conf'
+fi
 
 # Clean up image infrastructure
 echo "Detaching image..."

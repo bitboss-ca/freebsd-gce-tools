@@ -19,6 +19,7 @@ Use the `create-image.sh` script to create images suitable for writing to GCE di
       -k Path to public key for new user.  Will be added to authorized_keys so you can log in.  Required.
       -K Path to private key.  Implies install public and private keys for new user.
       -p Password for new user.  Default: passw0rd.
+      -P Packages to install, in a space-separated string (you will need to use quotes).
       -r Release of FreeBSD to use.  Default: 10.2-RELEASE
       -s Image size.  Specify units as G or M.  Default: 2G.
       -w Swap size.  Specify in same units as Image size.  Added to image size.  Default none.
@@ -33,6 +34,7 @@ Use the `create-image.sh` script to create images suitable for writing to GCE di
 * The script will use the current directory as a working directory.
 * Note that you are not required to have the specified image size available as free space on your local hard drive.  The truncate(1) command "does not cause space to be allocated" unless written to.  This script only requires about 1GB to run.
 * If you use ZFS, the above no longer applies; you will need to have the storage available for your specificed image size.
+* If installing packages, the script will create a temporary `/etc/resolv.conf` file pointing to Google's public DNS so that the FreeBSD repositories can be accessed from within the chroot.
 
 ## Writing Images
 Use any running *nix machine in the GCE to write your image to a new GCE disk.  If this is your first image, spin up an instance of debian, copy your new image to it, attach a new disk as big as your image target size, and write your image to the new disk.  Detach the new disk, and then you can create a new instance using your new disk.
